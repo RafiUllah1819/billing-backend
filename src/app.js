@@ -9,7 +9,10 @@ const app = express();
 
 app.use(
   cors({
-    origin: 'https://billinginvoices.netlify.app/login',
+    origin: [
+       "http://localhost:5173",
+      'https://billinginvoices.netlify.app/login',
+    ],
     credentials: true,
   })
 );
