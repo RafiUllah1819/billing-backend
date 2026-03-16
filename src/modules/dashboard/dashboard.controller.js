@@ -2,37 +2,29 @@ const pool = require('../../config/db');
 
 const getDashboardSummary = async (req, res) => {
   try {
-    const totalSalesQuery = `
-      SELECT COALESCE(SUM(total_amount), 0) AS total_sales
-      FROM sales_invoices
-      WHERE status = 'COMPLETED'
-    `;
+ const totalSalesQuery = `
+  SELECT COALESCE(SUM(total_amount), 0) AS total_sales
+  FROM sales_invoices
+  WHERE status != 'CANCELLED'
+`;
 
-    const totalPurchasesQuery = `
-      SELECT COALESCE(SUM(total_amount), 0) AS total_purchases
-      FROM purchase_bills
-      WHERE status = 'COMPLETED'
-    `;
+const totalPurchasesQuery = `
+  SELECT COALESCE(SUM(total_amount), 0) AS total_purchases
+  FROM purchase_bills
+  WHERE status != 'CANCELLED'
+`;
 
-    const totalCustomerDueQuery = `
-      SELECT COALESCE(SUM(due_amount), 0) AS total_customer_due
-      FROM sales_invoices
-      WHERE status = 'COMPLETED'
-    `;
+const totalCustomerDueQuery = `
+  SELECT COALESCE(SUM(due_amount), 0) AS total_customer_due
+  FROM sales_invoices
+  WHERE status != 'CANCELLED'
+`;
 
-    const totalSupplierDueQuery = `
-      SELECT COALESCE(SUM(due_amount), 0) AS total_supplier_due
-      FROM purchase_bills
-      WHERE status = 'COMPLETED'
-    `;
-
-    const lowStockQuery = `
-      SELECT COUNT(*) AS low_stock_count
-      FROM products
-      WHERE current_stock <= min_stock_alert
-      AND is_active = TRUE
-    `;
-
+const totalSupplierDueQuery = `
+  SELECT COALESCE(SUM(due_amount), 0) AS total_supplier_due
+  FROM purchase_bills
+  WHERE status != 'CANCELLED'
+`;
     const [salesResult, purchasesResult, customerDueResult, supplierDueResult, lowStockResult] =
       await Promise.all([
         pool.query(totalSalesQuery),
@@ -41,6 +33,12 @@ const getDashboardSummary = async (req, res) => {
         pool.query(totalSupplierDueQuery),
         pool.query(lowStockQuery),
       ]);
+
+      console.log("Sales Result:", salesResult.rows);
+      console.log("Purchases Result:", purchasesResult.rows);
+      console.log("Customer Due Result:", customerDueResult.rows);
+      console.log("Supplier Due Result:", supplierDueResult.rows);
+      console.log("Low Stock Result:", lowStockResult.rows);
 
     res.json({
       success: true,
@@ -177,27 +175,27 @@ const getDashboardAnalytics = async (req, res) => {
       pool.query(`
         SELECT COALESCE(SUM(total_amount), 0) AS sales_today
         FROM sales_invoices
-        WHERE status = 'COMPLETED'
+        WHERE status = 'CANCELLED'
           AND invoice_date = CURRENT_DATE
       `),
 
       pool.query(`
         SELECT COALESCE(SUM(total_amount), 0) AS purchases_today
         FROM purchase_bills
-        WHERE status = 'COMPLETED'
+        WHERE status = 'CANCELLED'
           AND bill_date = CURRENT_DATE
       `),
 
       pool.query(`
         SELECT COALESCE(SUM(due_amount), 0) AS total_receivables
         FROM sales_invoices
-        WHERE status = 'COMPLETED'
+        WHERE status = 'CANCELLED'
       `),
 
       pool.query(`
         SELECT COALESCE(SUM(due_amount), 0) AS total_payables
         FROM purchase_bills
-        WHERE status = 'COMPLETED'
+        WHERE status = 'CANCELLED'
       `),
 
       pool.query(`
@@ -219,7 +217,7 @@ const getDashboardAnalytics = async (req, res) => {
           ) AS months(month)
         LEFT JOIN sales_invoices si
           ON DATE_TRUNC('month', si.invoice_date) = months.month
-          AND si.status = 'COMPLETED'
+          AND si.status = 'CANCELLED'
         GROUP BY months.month
         ORDER BY months.month
       `),
@@ -236,7 +234,7 @@ const getDashboardAnalytics = async (req, res) => {
           ) AS months(month)
         LEFT JOIN purchase_bills pb
           ON DATE_TRUNC('month', pb.bill_date) = months.month
-          AND pb.status = 'COMPLETED'
+          AND pb.status = 'CANCELLED'
         GROUP BY months.month
         ORDER BY months.month
       `),
@@ -250,7 +248,7 @@ const getDashboardAnalytics = async (req, res) => {
         FROM sales_invoice_items sii
         JOIN products p ON p.id = sii.product_id
         JOIN sales_invoices si ON si.id = sii.invoice_id
-        WHERE si.status = 'COMPLETED'
+        WHERE si.status = 'CANCELLED'
         GROUP BY p.id, p.product_code, p.title
         ORDER BY total_qty_sold DESC
         LIMIT 5
