@@ -5,34 +5,43 @@ const getDashboardSummary = async (req, res) => {
  const totalSalesQuery = `
   SELECT COALESCE(SUM(total_amount), 0) AS total_sales
   FROM sales_invoices
-  WHERE status != 'CANCELLED'
 `;
 
 const totalPurchasesQuery = `
   SELECT COALESCE(SUM(total_amount), 0) AS total_purchases
   FROM purchase_bills
-  WHERE status != 'CANCELLED'
 `;
 
 const totalCustomerDueQuery = `
   SELECT COALESCE(SUM(due_amount), 0) AS total_customer_due
   FROM sales_invoices
-  WHERE status != 'CANCELLED'
 `;
 
 const totalSupplierDueQuery = `
   SELECT COALESCE(SUM(due_amount), 0) AS total_supplier_due
   FROM purchase_bills
-  WHERE status != 'CANCELLED'
 `;
-    const [salesResult, purchasesResult, customerDueResult, supplierDueResult, lowStockResult] =
-      await Promise.all([
-        pool.query(totalSalesQuery),
-        pool.query(totalPurchasesQuery),
-        pool.query(totalCustomerDueQuery),
-        pool.query(totalSupplierDueQuery),
-        pool.query(lowStockQuery),
-      ]);
+
+const lowStockQuery = `
+  SELECT COUNT(*) AS low_stock_count
+  FROM products
+  WHERE current_stock <= min_stock_alert
+  AND is_active = TRUE
+`;
+
+const [
+  salesResult,
+  purchasesResult,
+  customerDueResult,
+  supplierDueResult,
+  lowStockResult
+] = await Promise.all([
+  pool.query(totalSalesQuery),
+  pool.query(totalPurchasesQuery),
+  pool.query(totalCustomerDueQuery),
+  pool.query(totalSupplierDueQuery),
+  pool.query(lowStockQuery)
+]);
 
       console.log("Sales Result:", salesResult.rows);
       console.log("Purchases Result:", purchasesResult.rows);
