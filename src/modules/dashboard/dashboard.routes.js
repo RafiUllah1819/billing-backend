@@ -9,6 +9,7 @@ const {
   getMonthlySalesChart,
   getMonthlyPurchasesChart,
   getTopSellingProducts,
+  getDashboardOverview,
 } = require('./dashboard.controller');
 const authMiddleware = require('../../middlewares/auth.middleware');
 const roleMiddleware = require('../../middlewares/role.middleware');
@@ -49,5 +50,12 @@ router.get(
   getTopSellingProducts
 );
 
+
+router.get(
+  '/overview',
+  authMiddleware,
+  roleMiddleware('admin', 'manager', 'sales', 'inventory', 'accountant', 'cashier', 'inventory_user'),
+  getDashboardOverview
+);
 
 module.exports = router;

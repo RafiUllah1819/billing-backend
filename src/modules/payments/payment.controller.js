@@ -5,6 +5,9 @@ const { createAuditLog } = require('../../utils/audit.helper');
 
 const round2 = (value) => Number(Number(value).toFixed(2));
 
+// Allowed payment methods — used for validation in both customer and supplier payments
+const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'JazzCash', 'EasyPaisa'];
+
 const receiveCustomerPayment = async (req, res) => {
   const client = await pool.connect();
 
@@ -14,6 +17,7 @@ const receiveCustomerPayment = async (req, res) => {
       amount,
       payment_date,
       payment_method,
+      reference_no = null,
       remarks,
       reference_id = null,
       reference_type = 'CUSTOMER_PAYMENT',
@@ -34,6 +38,13 @@ const receiveCustomerPayment = async (req, res) => {
       });
     }
 
+    if (payment_method && !PAYMENT_METHODS.includes(payment_method)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment method. Allowed: ${PAYMENT_METHODS.join(', ')}`,
+      });
+    }
+
     const paymentAmount = round2(Number(amount));
 
     if (!Array.isArray(allocations) || allocations.length === 0) {
@@ -50,7 +61,7 @@ const receiveCustomerPayment = async (req, res) => {
     if (totalAllocated !== paymentAmount) {
       return res.status(400).json({
         success: false,
-        message: 'Payment amount must exactly match total allocated amount',
+        message: `Payment amount (${paymentAmount}) must exactly match total allocated amount (${totalAllocated})`,
       });
     }
 
@@ -80,11 +91,12 @@ const receiveCustomerPayment = async (req, res) => {
         customer_id,
         amount,
         payment_method,
+        reference_no,
         payment_date,
         remarks,
         created_by
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *`,
       [
         'CUSTOMER_RECEIPT',
@@ -93,6 +105,7 @@ const receiveCustomerPayment = async (req, res) => {
         customer_id,
         paymentAmount,
         payment_method || null,
+        reference_no || null,
         payment_date || new Date(),
         remarks || null,
         req.user?.id || null,
@@ -275,6 +288,7 @@ const paySupplierPayment = async (req, res) => {
       amount,
       payment_date,
       payment_method,
+      reference_no = null,
       remarks,
       reference_id = null,
       reference_type = 'SUPPLIER_PAYMENT',
@@ -295,6 +309,13 @@ const paySupplierPayment = async (req, res) => {
       });
     }
 
+    if (payment_method && !PAYMENT_METHODS.includes(payment_method)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment method. Allowed: ${PAYMENT_METHODS.join(', ')}`,
+      });
+    }
+
     const paymentAmount = round2(Number(amount));
 
     if (!Array.isArray(allocations) || allocations.length === 0) {
@@ -311,7 +332,7 @@ const paySupplierPayment = async (req, res) => {
     if (totalAllocated !== paymentAmount) {
       return res.status(400).json({
         success: false,
-        message: 'Payment amount must exactly match total allocated amount',
+        message: `Payment amount (${paymentAmount}) must exactly match total allocated amount (${totalAllocated})`,
       });
     }
 
@@ -341,11 +362,12 @@ const paySupplierPayment = async (req, res) => {
         supplier_id,
         amount,
         payment_method,
+        reference_no,
         payment_date,
         remarks,
         created_by
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *`,
       [
         'SUPPLIER_PAYMENT',
@@ -354,6 +376,7 @@ const paySupplierPayment = async (req, res) => {
         supplier_id,
         paymentAmount,
         payment_method || null,
+        reference_no || null,
         payment_date || new Date(),
         remarks || null,
         req.user?.id || null,
@@ -626,10 +649,47 @@ const getSupplierUnpaidBills = async (req, res) => {
   }
 };
 
+// Returns all payments that have been allocated against a specific invoice.
+// Used on the invoice detail page to show payment history.
+const getInvoicePaymentHistory = async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+          ip.id,
+          ip.allocated_amount,
+          ip.created_at AS allocated_at,
+          p.payment_date,
+          p.payment_method,
+          p.reference_no,
+          p.remarks
+       FROM invoice_payments ip
+       JOIN payments p ON p.id = ip.payment_id
+       WHERE ip.invoice_id = $1
+       ORDER BY ip.id ASC`,
+      [invoiceId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Get invoice payment history error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payment history',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   receiveCustomerPayment,
   paySupplierPayment,
   getAllPayments,
   getCustomerUnpaidInvoices,
   getSupplierUnpaidBills,
+  getInvoicePaymentHistory,
 };

@@ -284,3 +284,50 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
 SELECT id, username, email, full_name, role, is_active
 FROM users
 ORDER BY id;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration: fix invoice/bill status constraints to support PARTIAL and PAID
+-- These statuses are written by the payment controller but were missing
+-- from the original CHECK constraint, causing silent DB rejections.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE sales_invoices
+  DROP CONSTRAINT IF EXISTS sales_invoices_status_check;
+ALTER TABLE sales_invoices
+  ADD CONSTRAINT sales_invoices_status_check
+  CHECK (status IN ('DRAFT', 'COMPLETED', 'PARTIAL', 'PAID', 'CANCELLED'));
+
+ALTER TABLE purchase_bills
+  DROP CONSTRAINT IF EXISTS purchase_bills_status_check;
+ALTER TABLE purchase_bills
+  ADD CONSTRAINT purchase_bills_status_check
+  CHECK (status IN ('DRAFT', 'COMPLETED', 'PARTIAL', 'PAID', 'CANCELLED'));
+
+-- Migration: create missing purchase_bill_payments table
+-- Referenced by payment.controller.js but was never defined in schema.
+CREATE TABLE IF NOT EXISTS purchase_bill_payments (
+    id SERIAL PRIMARY KEY,
+    payment_id INTEGER NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+    purchase_bill_id INTEGER NOT NULL REFERENCES purchase_bills(id) ON DELETE CASCADE,
+    allocated_amount NUMERIC(12,2) NOT NULL CHECK (allocated_amount > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Migration: add reference_no to payments for cheque/bank/mobile payment tracking
+ALTER TABLE payments
+  ADD COLUMN IF NOT EXISTS reference_no VARCHAR(100);
+
+-- Migration: expense tracking module
+CREATE TABLE IF NOT EXISTS expenses (
+    id SERIAL PRIMARY KEY,
+    category VARCHAR(50) NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    payment_method VARCHAR(50),
+    reference_no VARCHAR(100),
+    notes TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

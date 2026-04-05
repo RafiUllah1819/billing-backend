@@ -7,7 +7,8 @@ const {
   paySupplierPayment,
   getAllPayments,
   getCustomerUnpaidInvoices,
-  getSupplierUnpaidBills
+  getSupplierUnpaidBills,
+  getInvoicePaymentHistory,
 } = require('./payment.controller');
 
 router.get(
@@ -43,6 +44,13 @@ router.get(
   authMiddleware,
   roleMiddleware('admin', 'manager', 'inventory', 'accountant'),
   getSupplierUnpaidBills
+);
+
+router.get(
+  '/invoice-history/:invoiceId',
+  authMiddleware,
+  roleMiddleware('admin', 'manager', 'sales', 'accountant'),
+  getInvoicePaymentHistory
 );
 
 module.exports = router;

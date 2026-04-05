@@ -2,6 +2,8 @@ const pool = require('../../config/db');
 const bcrypt = require('bcryptjs');
 const { createAuditLog } = require('../../utils/audit.helper');
 
+const VALID_ROLES = ['admin', 'manager', 'accountant', 'sales', 'cashier', 'inventory', 'inventory_user'];
+
 const getAllUsers = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -38,6 +40,13 @@ const createUser = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Username and password are required'
+      });
+    }
+
+    if (role && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Allowed: ${VALID_ROLES.join(', ')}`
       });
     }
 
@@ -95,6 +104,13 @@ const updateUser = async (req, res) => {
       role,
       is_active
     } = req.body;
+
+    if (role && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Allowed: ${VALID_ROLES.join(', ')}`
+      });
+    }
 
     const result = await pool.query(
       `

@@ -19,6 +19,7 @@ const auditRoutes = require('../modules/audit/audit.routes');
 const settingsRoutes = require('../modules/settings/settings.routes');
 const agingRoutes = require('../modules/aging/aging.routes');
 const backupRoutes = require('../modules/backup/backup.routes');
+const expenseRoutes = require('../modules/expenses/expense.routes');
 
 const router = express.Router();
 
@@ -67,5 +68,6 @@ router.use('/audit-logs', auditRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/aging', agingRoutes);
 router.use('/backups', backupRoutes);
+router.use('/expenses', expenseRoutes);
 
 module.exports = router;

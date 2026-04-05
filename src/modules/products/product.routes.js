@@ -2,6 +2,7 @@ const express = require('express');
 const {
   createProduct,
   getAllProducts,
+  getProductCategories,
   updateProduct,
   deactivateProduct,
   uploadProductImage,
@@ -19,6 +20,13 @@ router.get(
   authMiddleware,
   roleMiddleware('admin', 'manager', 'inventory', 'sales', 'accountant'),
   getAllProducts
+);
+
+router.get(
+  '/categories',
+  authMiddleware,
+  roleMiddleware('admin', 'manager', 'inventory', 'sales', 'accountant'),
+  getProductCategories
 );
 
 router.post(

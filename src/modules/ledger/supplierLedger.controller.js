@@ -3,71 +3,87 @@ const pool = require('../../config/db');
 const getSupplierLedger = async (req, res) => {
   try {
     const { supplierId } = req.params;
+    const { from_date, to_date } = req.query;
 
+    // ── Supplier info ──────────────────────────────────────────────────────
     const supplierResult = await pool.query(
       `SELECT id, supplier_code, supplier_name, phone, email, address, opening_balance
-       FROM suppliers
-       WHERE id = $1
-       LIMIT 1`,
+       FROM suppliers WHERE id = $1 LIMIT 1`,
       [supplierId]
     );
 
     if (supplierResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Supplier not found',
-      });
+      return res.status(404).json({ success: false, message: 'Supplier not found' });
     }
 
     const supplier = supplierResult.rows[0];
 
+    // ── Period opening balance ─────────────────────────────────────────────
+    let periodOpeningBalance = Number(supplier.opening_balance || 0);
+
+    if (from_date) {
+      const priorResult = await pool.query(
+        `SELECT balance FROM supplier_ledger
+         WHERE supplier_id = $1 AND entry_date < $2
+         ORDER BY entry_date DESC, id DESC
+         LIMIT 1`,
+        [supplierId, from_date]
+      );
+      if (priorResult.rows.length > 0) {
+        periodOpeningBalance = Number(priorResult.rows[0].balance);
+      }
+    }
+
+    // ── Entries (optionally date-filtered) ─────────────────────────────────
+    const params = [supplierId];
+    let whereClause = 'WHERE supplier_id = $1';
+
+    if (from_date) {
+      params.push(from_date);
+      whereClause += ` AND entry_date >= $${params.length}`;
+    }
+    if (to_date) {
+      params.push(to_date);
+      whereClause += ` AND entry_date <= $${params.length}`;
+    }
+
     const ledgerResult = await pool.query(
-      `SELECT
-          id,
-          entry_date,
-          reference_type,
-          reference_id,
-          debit,
-          credit,
-          balance,
-          remarks,
-          created_at
+      `SELECT id, entry_date, reference_type, reference_id, debit, credit, balance, remarks
        FROM supplier_ledger
-       WHERE supplier_id = $1
+       ${whereClause}
        ORDER BY entry_date ASC, id ASC`,
-      [supplierId]
+      params
     );
 
-    const totalsResult = await pool.query(
-      `SELECT
-          COALESCE(SUM(debit), 0) AS total_debit,
-          COALESCE(SUM(credit), 0) AS total_credit,
-          COALESCE(MAX(balance), 0) AS closing_balance
-       FROM supplier_ledger
-       WHERE supplier_id = $1`,
-      [supplierId]
-    );
+    const entries = ledgerResult.rows;
+
+    // ── Totals from filtered entries ───────────────────────────────────────
+    const totalDebit  = entries.reduce((s, e) => s + Number(e.debit  || 0), 0);
+    const totalCredit = entries.reduce((s, e) => s + Number(e.credit || 0), 0);
+    const closingBalance = entries.length > 0
+      ? Number(entries[entries.length - 1].balance)
+      : periodOpeningBalance;
 
     res.json({
       success: true,
       data: {
         supplier,
-        summary: {
-          opening_balance: Number(supplier.opening_balance || 0),
-          total_debit: Number(totalsResult.rows[0].total_debit || 0),
-          total_credit: Number(totalsResult.rows[0].total_credit || 0),
-          closing_balance: Number(totalsResult.rows[0].closing_balance || 0),
+        period: {
+          from_date: from_date || null,
+          to_date:   to_date   || null,
         },
-        entries: ledgerResult.rows,
+        summary: {
+          opening_balance: periodOpeningBalance,
+          total_debit:     totalDebit,
+          total_credit:    totalCredit,
+          closing_balance: closingBalance,
+        },
+        entries,
       },
     });
   } catch (error) {
     console.error('Get supplier ledger error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch supplier ledger',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch supplier ledger' });
   }
 };
 
@@ -80,28 +96,23 @@ const getSupplierLedgerList = async (req, res) => {
           s.supplier_name,
           s.phone,
           s.opening_balance,
-          COALESCE(MAX(sl.balance), 0) AS current_balance
+          COALESCE(
+            (SELECT balance FROM supplier_ledger
+             WHERE supplier_id = s.id
+             ORDER BY entry_date DESC, id DESC
+             LIMIT 1),
+            s.opening_balance,
+            0
+          ) AS current_balance
        FROM suppliers s
-       LEFT JOIN supplier_ledger sl ON sl.supplier_id = s.id
-       GROUP BY s.id, s.supplier_code, s.supplier_name, s.phone, s.opening_balance
        ORDER BY s.supplier_name ASC`
     );
 
-    res.json({
-      success: true,
-      data: result.rows,
-    });
+    res.json({ success: true, data: result.rows });
   } catch (error) {
     console.error('Get supplier ledger list error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch supplier ledger list',
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: 'Failed to fetch supplier ledger list' });
   }
 };
 
-module.exports = {
-  getSupplierLedger,
-  getSupplierLedgerList,
-};
+module.exports = { getSupplierLedger, getSupplierLedgerList };
