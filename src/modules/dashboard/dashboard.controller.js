@@ -376,7 +376,7 @@ const getDashboardOverview = async (req, res) => {
 
       // Low stock items
       runQuery('low_stock', () => pool.query(`
-        SELECT id, product_code, title, category, unit, current_stock, min_stock_alert, image_url
+        SELECT id, product_code, title, unit, current_stock, min_stock_alert, image_url
         FROM products
         WHERE is_active = TRUE AND min_stock_alert > 0 AND current_stock <= min_stock_alert
         ORDER BY current_stock ASC, title ASC
