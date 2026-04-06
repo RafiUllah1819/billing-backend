@@ -296,6 +296,15 @@ const getDashboardOverview = async (req, res) => {
       if (!to_date)   to_date   = `${y}-${m}-${d}`;
     }
 
+    const runQuery = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (e) {
+        console.error(`Dashboard overview – query FAILED [${label}]:`, e.message);
+        throw e;
+      }
+    };
+
     const [
       salesRes,
       purchasesRes,
@@ -312,7 +321,7 @@ const getDashboardOverview = async (req, res) => {
     ] = await Promise.all([
 
       // Period sales
-      pool.query(`
+      runQuery('sales', () => pool.query(`
         SELECT
           COALESCE(SUM(total_amount), 0)  AS total,
           COALESCE(SUM(paid_amount),  0)  AS paid,
@@ -321,10 +330,10 @@ const getDashboardOverview = async (req, res) => {
         FROM sales_invoices
         WHERE status != 'CANCELLED'
           AND invoice_date BETWEEN $1 AND $2
-      `, [from_date, to_date]),
+      `, [from_date, to_date])),
 
       // Period purchases
-      pool.query(`
+      runQuery('purchases', () => pool.query(`
         SELECT
           COALESCE(SUM(total_amount), 0)  AS total,
           COALESCE(SUM(paid_amount),  0)  AS paid,
@@ -333,74 +342,74 @@ const getDashboardOverview = async (req, res) => {
         FROM purchase_bills
         WHERE status != 'CANCELLED'
           AND bill_date BETWEEN $1 AND $2
-      `, [from_date, to_date]),
+      `, [from_date, to_date])),
 
       // Period expenses
-      pool.query(`
+      runQuery('expenses', () => pool.query(`
         SELECT
           COALESCE(SUM(amount), 0) AS total,
           COUNT(*)                 AS count
         FROM expenses
         WHERE expense_date BETWEEN $1 AND $2
-      `, [from_date, to_date]),
+      `, [from_date, to_date])),
 
       // All-time outstanding receivables
-      pool.query(`
+      runQuery('receivables', () => pool.query(`
         SELECT
           COALESCE(SUM(due_amount), 0) AS total,
           COUNT(*) FILTER (WHERE due_amount > 0) AS invoice_count
         FROM sales_invoices
         WHERE status != 'CANCELLED' AND due_amount > 0
-      `),
+      `)),
 
       // All-time outstanding payables
-      pool.query(`
+      runQuery('payables', () => pool.query(`
         SELECT
           COALESCE(SUM(due_amount), 0) AS total,
           COUNT(*) FILTER (WHERE due_amount > 0) AS bill_count
         FROM purchase_bills
         WHERE status != 'CANCELLED' AND due_amount > 0
-      `),
+      `)),
 
       // Low stock items
-      pool.query(`
+      runQuery('low_stock', () => pool.query(`
         SELECT id, product_code, title, category, unit, current_stock, min_stock_alert, image_url
         FROM products
         WHERE is_active = TRUE AND min_stock_alert > 0 AND current_stock <= min_stock_alert
         ORDER BY current_stock ASC, title ASC
         LIMIT 10
-      `),
+      `)),
 
       // Recent 8 invoices (not period-filtered)
-      pool.query(`
+      runQuery('recent_invoices', () => pool.query(`
         SELECT si.id, si.invoice_no, si.invoice_date, si.total_amount, si.due_amount, si.status,
                c.customer_name
         FROM sales_invoices si
         JOIN customers c ON c.id = si.customer_id
         ORDER BY si.id DESC LIMIT 8
-      `),
+      `)),
 
       // Recent 8 purchases (not period-filtered)
-      pool.query(`
+      runQuery('recent_purchases', () => pool.query(`
         SELECT pb.id, pb.bill_no, pb.bill_date, pb.total_amount, pb.due_amount, pb.status,
                s.supplier_name
         FROM purchase_bills pb
         JOIN suppliers s ON s.id = pb.supplier_id
         ORDER BY pb.id DESC LIMIT 8
-      `),
+      `)),
 
       // Recent 8 payments (not period-filtered)
-      pool.query(`
+      runQuery('recent_payments', () => pool.query(`
         SELECT p.id, p.payment_date, p.payment_type, p.amount, p.payment_method,
                c.customer_name, s.supplier_name
         FROM payments p
         LEFT JOIN customers c ON c.id = p.customer_id
         LEFT JOIN suppliers s ON s.id = p.supplier_id
         ORDER BY p.id DESC LIMIT 8
-      `),
+      `)),
 
       // Top 5 customers for period
-      pool.query(`
+      runQuery('top_customers', () => pool.query(`
         SELECT c.id, c.customer_name, c.customer_code,
                COALESCE(SUM(si.total_amount), 0) AS total_sales,
                COUNT(si.id)                       AS invoice_count
@@ -410,10 +419,10 @@ const getDashboardOverview = async (req, res) => {
           AND si.invoice_date BETWEEN $1 AND $2
         GROUP BY c.id, c.customer_name, c.customer_code
         ORDER BY total_sales DESC LIMIT 5
-      `, [from_date, to_date]),
+      `, [from_date, to_date])),
 
       // Top 5 products for period
-      pool.query(`
+      runQuery('top_products', () => pool.query(`
         SELECT p.id, p.product_code, p.title, p.image_url,
                COALESCE(SUM(sii.quantity),   0) AS total_qty,
                COALESCE(SUM(sii.line_total), 0) AS total_revenue
@@ -424,10 +433,10 @@ const getDashboardOverview = async (req, res) => {
           AND si.invoice_date BETWEEN $1 AND $2
         GROUP BY p.id, p.product_code, p.title, p.image_url
         ORDER BY total_qty DESC LIMIT 5
-      `, [from_date, to_date]),
+      `, [from_date, to_date])),
 
       // Last 6 months combined trend (always, for the chart)
-      pool.query(`
+      runQuery('trend', () => pool.query(`
         SELECT
           TO_CHAR(m.month, 'Mon YY') AS month,
           COALESCE(s.sales,     0)   AS sales,
@@ -446,7 +455,7 @@ const getDashboardOverview = async (req, res) => {
           FROM purchase_bills WHERE status != 'CANCELLED' GROUP BY 1
         ) p ON p.mo = m.month
         ORDER BY m.month
-      `),
+      `)),
     ]);
 
     const totalSales     = Number(salesRes.rows[0].total     || 0);
