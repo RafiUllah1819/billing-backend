@@ -296,12 +296,15 @@ const getDashboardOverview = async (req, res) => {
       if (!to_date)   to_date   = `${y}-${m}-${d}`;
     }
 
-    const runQuery = async (label, fn) => {
+    const runQuery = async (label, fn, fallback = null) => {
       try {
         return await fn();
       } catch (e) {
+        const err = new Error(e.message);
+        err.queryLabel = label;
         console.error(`Dashboard overview – query FAILED [${label}]:`, e.message);
-        throw e;
+        if (fallback !== null) return fallback;
+        throw err;
       }
     };
 
@@ -344,14 +347,14 @@ const getDashboardOverview = async (req, res) => {
           AND bill_date BETWEEN $1 AND $2
       `, [from_date, to_date])),
 
-      // Period expenses
+      // Period expenses (optional – table may not exist on older DBs)
       runQuery('expenses', () => pool.query(`
         SELECT
           COALESCE(SUM(amount), 0) AS total,
           COUNT(*)                 AS count
         FROM expenses
         WHERE expense_date BETWEEN $1 AND $2
-      `, [from_date, to_date])),
+      `, [from_date, to_date]), { rows: [{ total: 0, count: 0 }] }),
 
       // All-time outstanding receivables
       runQuery('receivables', () => pool.query(`
@@ -524,7 +527,7 @@ const getDashboardOverview = async (req, res) => {
     });
   } catch (error) {
     console.error('Dashboard overview error:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch dashboard overview', debug: error.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch dashboard overview', debug_query: error.queryLabel || 'unknown', debug_error: error.message });
   }
 };
 
