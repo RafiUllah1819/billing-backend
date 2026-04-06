@@ -524,7 +524,7 @@ const getDashboardOverview = async (req, res) => {
     });
   } catch (error) {
     console.error('Dashboard overview error:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch dashboard overview' });
+    res.status(500).json({ success: false, message: 'Failed to fetch dashboard overview', debug: error.message });
   }
 };
 
